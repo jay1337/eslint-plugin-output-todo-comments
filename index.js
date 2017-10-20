@@ -1,21 +1,20 @@
 /**
- * @fileoverview Rule that warns about used warning comments and shows they as are
+ * @fileoverview Rule that warns about used warning comments
  * @author Alexander Schmidt <https://github.com/lxanders>
- * @author Andrey Gubanov <https://github.com/lxanders>
  */
 
 "use strict";
 
-var ellipsize = require('ellipsize');
+const astUtils = require("eslint/lib/ast-utils");
 
 //------------------------------------------------------------------------------
 // Rule Definition
 //------------------------------------------------------------------------------
 
-var ruleDef = {
+module.exports = {
     meta: {
         docs: {
-            description: "warn about todos",
+            description: "disallow specified warning terms in comments",
             category: "Best Practices",
             recommended: false
         },
@@ -39,13 +38,13 @@ var ruleDef = {
         ]
     },
 
-    create: function(context) {
+    create(context) {
 
-        var configuration = context.options[0] || {},
+        const sourceCode = context.getSourceCode(),
+            configuration = context.options[0] || {},
             warningTerms = configuration.terms || ["todo", "fixme", "xxx"],
             location = configuration.location || "start",
-            selfConfigRegEx = /\bno-warning-comments\b/,
-            warningRegExps;
+            selfConfigRegEx = /\bno-warning-comments\b/;
 
         /**
          * Convert a warning term into a RegExp which will match a comment containing that whole word in the specified
@@ -56,9 +55,8 @@ var ruleDef = {
          * @returns {RegExp} The term converted to a RegExp
          */
         function convertToRegExp(term) {
-            var escaped = term.replace(/[-\/\\$\^*+?.()|\[\]{}]/g, "\\$&"),
-                suffix,
-                prefix;
+            const escaped = term.replace(/[-/\\$^*+?.()|[\]{}]/g, "\\$&");
+            let prefix;
 
             /*
              * If the term ends in a word character (a-z0-9_), ensure a word
@@ -70,7 +68,7 @@ var ruleDef = {
              * In these cases, use no bounding match. Same applies for the
              * prefix, handled below.
              */
-            suffix = /\w$/.test(term) ? "\\b" : "";
+            const suffix = /\w$/.test(term) ? "\\b" : "";
 
             if (location === "start") {
 
@@ -88,15 +86,17 @@ var ruleDef = {
             return new RegExp(prefix + escaped + suffix, "i");
         }
 
+        const warningRegExps = warningTerms.map(convertToRegExp);
+
         /**
          * Checks the specified comment for matches of the configured warning terms and returns the matches.
          * @param {string} comment The comment which is checked.
          * @returns {Array} All matched warning terms for this comment.
          */
         function commentContainsWarningTerm(comment) {
-            var matches = [];
+            const matches = [];
 
-            warningRegExps.forEach(function(regex, index) {
+            warningRegExps.forEach((regex, index) => {
                 if (regex.test(comment)) {
                     matches.push(warningTerms[index]);
                 }
@@ -111,23 +111,29 @@ var ruleDef = {
          * @returns {void} undefined.
          */
         function checkComment(node) {
-            var matches = commentContainsWarningTerm(node.value);
+            if (astUtils.isDirectiveComment(node) && selfConfigRegEx.test(node.value)) {
+                return;
+            }
 
-            matches.forEach(function(matchedTerm) {
-                context.report(node, ellipsize(node.value.trim(), 60));
+            const matches = commentContainsWarningTerm(node.value);
+
+            matches.forEach(matchedTerm => {
+                context.report({
+                    node,
+                    message: node.value,
+                    data: {
+                        matchedTerm
+                    }
+                });
             });
         }
 
-        warningRegExps = warningTerms.map(convertToRegExp);
         return {
-            BlockComment: checkComment,
-            LineComment: checkComment
+            Program() {
+                const comments = sourceCode.getAllComments();
+
+                comments.filter(token => token.type !== "Shebang").forEach(checkComment);
+            }
         };
     }
 };
-
-module.exports = {
-    rules: {
-        'output-todo-comments': ruleDef
-    }
-}
