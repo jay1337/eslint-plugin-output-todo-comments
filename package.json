@@ -11,9 +11,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "peerDependencies": {
-    "eslint": "^4.8.0"
   },
   "license": "MIT",
   "dependencies": {
+    "eslint": "^4.8.0"
   }
 }
